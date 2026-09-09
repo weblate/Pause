@@ -39,7 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was treated the same as a fresh session — cancelling whatever alarm was still armed. The alarm
   survives a kill on its own; only the restart's reset was destroying it. Timer and break state
   now persist to disk and are restored on that specific restart, not on an explicit start. Covered
-  by a Robolectric test that reproduces the original failure before the fix.
+  by a Robolectric test that reproduces the original failure before the fix. Stopping the bubble
+  clears that persisted deadline too, so nothing is left believing in a timer no alarm backs.
+- **A refused foreground-service start no longer crashes the caller.** `startForegroundService`
+  throws when the OS decides the app isn't entitled to a background start, and the timer-fire
+  path calls it from a broadcast receiver — where an escaping exception takes the app down on
+  the one path that matters most. The service's own handler can't catch this; it is thrown at
+  the caller. Refusals now degrade to "nothing appears this time", and the next successful start
+  catches the timer up from disk.
 - `ONBOARDING.md` pointed `JAVA_HOME` at an Android Studio install with no `java.exe`, which fails
   with a misleading "invalid directory", and still gave the version as 0.4.1 / 5 rather than
   0.5.1 / 7. Its translation section described Weblate as a future recommendation.

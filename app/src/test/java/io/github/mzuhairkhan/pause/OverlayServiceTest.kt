@@ -162,4 +162,27 @@ class OverlayServiceTest {
         assertTrue(shadowOf(alarmManager).scheduledAlarms.isEmpty())
         assertFalse("a manually stopped service must report itself as not running", OverlayService.running.value)
     }
+
+    @Test
+    fun `a manual stop also clears the persisted timer, not just the alarm`() {
+        // onDestroy cancels the alarm, so nothing will ever fire it again. Leaving the deadline
+        // on disk would make every PauseState reader (the widget, a later restore) believe a
+        // timer is still running that nothing backs. stopBreak() already clears its half.
+        ShadowSettings.setCanDrawOverlays(true)
+        val end = System.currentTimeMillis() + 30 * 60_000L
+        PauseState.setTimer(app, System.currentTimeMillis(), end)
+        PauseAlarm.schedule(app, end)
+
+        val service = newService()
+        service.onStartCommand(null, 0, 1)
+        assertEquals("precondition: the timer resumed", end, PauseState.snapshot(app).timerEndMillis)
+
+        service.onDestroy()
+
+        assertEquals(
+            "a stopped service must not leave a timer on disk that no alarm backs",
+            0L,
+            PauseState.snapshot(app).timerEndMillis
+        )
+    }
 }

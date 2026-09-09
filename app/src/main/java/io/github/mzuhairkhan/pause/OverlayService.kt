@@ -314,8 +314,13 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         _running.value = false
-        // A manual stop cancels any pending timer so it can't fire after the overlay is gone.
+        // A manual stop cancels any pending timer so it can't fire after the overlay is gone --
+        // and clears it from disk with it, or every PauseState reader (the widget, a later
+        // restore) would still see a deadline that no alarm backs. A process *kill* never
+        // reaches here, so this doesn't undermine restoreSession(): that path is exactly the
+        // one where onDestroy didn't run.
         cancelPendingAlarm()
+        PauseState.clearTimer(this)
         snapAnimator?.cancel()
         stopTicker()
         stopBreak()
@@ -1682,12 +1687,32 @@ class OverlayService : Service() {
             val intent = Intent(context, OverlayService::class.java).apply {
                 action = ACTION_REFRESH_BUBBLE
             }
-            context.startForegroundService(intent)
+            startSafely(context, intent)
+        }
+
+        /**
+         * Starts the service, swallowing an OS refusal rather than letting it reach the caller.
+         * At targetSdk 31+ `startForegroundService` throws
+         * `ForegroundServiceStartNotAllowedException` (an [IllegalStateException]) when the OS
+         * decides the app isn't entitled to a background start. The service's own try/catch
+         * around `startForeground()` cannot help: this throws at the *caller*, and
+         * [timerFired] is called from [TimerReceiver], where an escape would crash the app from
+         * a broadcast receiver on the single path that matters most.
+         *
+         * Degrading here is survivable: nothing clears [PauseState], so the next successful
+         * start catches the timer up through `restoreSession()`.
+         */
+        private fun startSafely(context: Context, intent: Intent) {
+            try {
+                context.startForegroundService(intent)
+            } catch (e: IllegalStateException) {
+                // Refused; the bubble or wind-down just doesn't appear this time.
+            }
         }
 
         fun start(context: Context) {
             val intent = Intent(context, OverlayService::class.java)
-            context.startForegroundService(intent)
+            startSafely(context, intent)
         }
 
         fun stop(context: Context) {
@@ -1699,7 +1724,7 @@ class OverlayService : Service() {
             val intent = Intent(context, OverlayService::class.java).apply {
                 action = ACTION_TIMER_FIRED
             }
-            context.startForegroundService(intent)
+            startSafely(context, intent)
         }
 
         /** Creates the LOW-importance status channel and clears out the earlier channels. */
