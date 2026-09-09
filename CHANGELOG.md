@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A monochrome launcher icon layer**, so Pause participates in Android 13+ themed icons instead
+  of staying full-colour on a themed home screen. Same geometry and 0.58 progress frame as the
+  existing foreground icon, generated with the same `tools/gen_hourglass_frame.py` script so the
+  two can't drift apart into different silhouettes. Closes lint's `MonochromeLauncherIcon`.
 - **German, Spanish, Italian, Portuguese, Swedish and Turkish string files**, extracted from review
   documents that were sent out but never came back. Machine-assisted drafts — seeds for translators,
   not shipped translations. 101 of 108 translatable entries per language; the rest had no draft.

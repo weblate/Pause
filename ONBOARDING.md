@@ -145,7 +145,7 @@ the `%1$s` / `%1$d` / `✓` intact, add a `<locale>`. `lintDebug` flags missing 
       With the build reproducible, prefer `Binaries:` + `AllowedAPKSigningKeys:` so F-Droid
       verifies and ships *our* signed APK instead of re-signing — see the signing-key decision
       below.
-- [ ] Add a `<monochrome>` layer to the adaptive icon (themed-icon polish).
+- [x] `<monochrome>` layer on the adaptive icon (themed-icon polish).
 
 ### Google Play — release plan
 
@@ -218,7 +218,9 @@ Google treats as sensitive. Ordered by what blocks what.
 - [ ] The listing text can be reused from the F-Droid `full_description.txt` largely as-is.
 
 #### 5. Product polish worth doing before either store
-- [ ] `<monochrome>` layer on the adaptive icon (lint `MonochromeLauncherIcon`; themed icons).
+- [x] `<monochrome>` layer on the adaptive icon (closes lint `MonochromeLauncherIcon`; themed
+      icons). Same geometry and progress frame (0.58) as `ic_launcher_foreground.xml`, generated
+      with `tools/gen_hourglass_frame.py` so the two can't drift into different silhouettes.
 - [ ] **The launcher glyph is undersized.** The hourglass occupies roughly 43% of the 108dp
       canvas where the adaptive-icon safe zone is about 61%. It will read noticeably smaller than
       neighbouring icons. The notification icon, by contrast, is correct.
