@@ -281,3 +281,13 @@ class SessionRestoreTest {
         assertFalse(SessionRestore.breakStillActive(0L, now))
     }
 }
+
+class BreakPollingTest {
+    @Test
+    fun `the foreground app is queried only while the screen is on`() {
+        // The foreground app cannot change while the screen is off, so skipping the query
+        // there is free correctness, not just a battery optimization.
+        assertTrue(BreakPolling.shouldQueryForeground(screenOn = true))
+        assertFalse(BreakPolling.shouldQueryForeground(screenOn = false))
+    }
+}

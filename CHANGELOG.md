@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pull-request flows, which `ONBOARDING.md` never was.
 
 ### Changed
+- **The "Stop for now" break skips its per-second foreground-app query while the screen is off**,
+  rather than dispatching a background-thread usage-stats query it already knows will find nothing
+  — the foreground app cannot change with the screen off. A modest battery saving, not a dramatic
+  one: the poll was already off the main thread and its query window was already narrow.
 - The app name and the launcher-preset brands (Instagram, TikTok, Shorts) are `translatable="false"`;
   Finnish had been repeating all six verbatim.
 - **The CHANGELOG check accepts translation-only pull requests.** Weblate opens one per language

@@ -209,3 +209,12 @@ object SessionRestore {
     fun breakStillActive(persistedBreakUntil: Long, now: Long): Boolean =
         persistedBreakUntil > now
 }
+
+/**
+ * Gates the "Stop for now" break's per-second foreground-app poll on screen state. The
+ * foreground app cannot change while the screen is off, so querying it then is wasted battery
+ * for no correctness benefit -- skipping it is free, not a trade-off.
+ */
+object BreakPolling {
+    fun shouldQueryForeground(screenOn: Boolean): Boolean = screenOn
+}

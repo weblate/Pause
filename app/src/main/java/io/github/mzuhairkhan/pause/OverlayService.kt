@@ -30,6 +30,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.ContextThemeWrapper
 import android.view.Gravity
@@ -115,6 +116,10 @@ class OverlayService : Service() {
     private var lastForegroundPackage: String? = null
     private var lastForegroundEventTime = 0L
 
+    /** Whether the screen is on, per [registerScreenStateReceiver]; gates [BreakPolling]. */
+    private var screenOn = true
+    private var screenStateRelease: (() -> Unit)? = null
+
     private val blockHandler = Handler(Looper.getMainLooper())
 
     /** Background looper for the usage-stats query, which can be slow enough to jank the UI. */
@@ -129,17 +134,21 @@ class OverlayService : Service() {
                 return
             }
             updateBlockCountdown(remaining)
-            // Resolve the foreground app off the main thread (the usage query can take tens
-            // of ms), then apply the cover/uncover decision back on the main thread, where
-            // all WindowManager work must happen.
-            val poll = pollHandler
-            if (poll != null) {
-                poll.post {
-                    val foreground = currentForegroundApp()
-                    blockHandler.post { applyForeground(foreground) }
+            // The foreground app can't change while the screen is off, so skip the query
+            // entirely rather than spend a background-thread round trip on nothing.
+            if (BreakPolling.shouldQueryForeground(screenOn)) {
+                // Resolve the foreground app off the main thread (the usage query can take
+                // tens of ms), then apply the cover/uncover decision back on the main thread,
+                // where all WindowManager work must happen.
+                val poll = pollHandler
+                if (poll != null) {
+                    poll.post {
+                        val foreground = currentForegroundApp()
+                        blockHandler.post { applyForeground(foreground) }
+                    }
+                } else {
+                    applyForeground(currentForegroundApp())
                 }
-            } else {
-                applyForeground(currentForegroundApp())
             }
             blockHandler.postDelayed(this, BLOCK_POLL_MS)
         }
@@ -1067,9 +1076,7 @@ class OverlayService : Service() {
             coveredPackage = null
             lastForegroundPackage = null
             lastForegroundEventTime = 0L
-            ensurePollThread()
-            blockHandler.removeCallbacks(blockRunnable)
-            blockHandler.post(blockRunnable)
+            beginBlockPolling()
         }
         updateNotification()
     }
@@ -1308,9 +1315,47 @@ class OverlayService : Service() {
         coveredPackage = null
         lastForegroundPackage = null
         lastForegroundEventTime = 0L
+        beginBlockPolling()
+    }
+
+    /**
+     * Starts the break poll loop: [ensurePollThread] for the off-main-thread usage query, the
+     * screen-state receiver [BreakPolling] gates that query on, and the loop itself. Shared by
+     * [startBreakIfConfigured] and [restoreSession]'s break branch, which both arrive at a fully
+     * populated [blockUntilMillis]/[blockedPackages] by different routes but must start polling
+     * identically -- a break resumed after a sticky restart needs the screen-state receiver just
+     * as much as one started fresh.
+     */
+    private fun beginBlockPolling() {
         ensurePollThread()
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        screenOn = powerManager.isInteractive
+        screenStateRelease?.invoke()
+        screenStateRelease = registerScreenStateReceiver()
         blockHandler.removeCallbacks(blockRunnable)
         blockHandler.post(blockRunnable)
+    }
+
+    /**
+     * Registers a runtime receiver for `ACTION_SCREEN_ON`/`ACTION_SCREEN_OFF`, updating
+     * [screenOn] so the break poll can skip its foreground-app query while the screen is off --
+     * see [BreakPolling]. Runtime registration is required: these broadcasts have never reached
+     * manifest receivers, at any API level.
+     *
+     * @return a function that unregisters the receiver.
+     */
+    private fun registerScreenStateReceiver(): () -> Unit {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                screenOn = intent.action == Intent.ACTION_SCREEN_ON
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
+        ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        return { unregisterReceiver(receiver) }
     }
 
     private fun stopBreak() {
@@ -1318,6 +1363,8 @@ class OverlayService : Service() {
         blockUntilMillis = 0L
         blockedPackages = emptySet()
         PauseState.clearBreak(this)
+        screenStateRelease?.invoke()
+        screenStateRelease = null
         hideBlockOverlay()
     }
 
