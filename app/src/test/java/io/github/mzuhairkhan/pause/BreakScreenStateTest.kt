@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -79,5 +80,43 @@ class BreakScreenStateTest {
             "stopping the service must not leave the screen-state receiver registered",
             shadowOf(app).hasReceiverForIntent(screenOffIntent)
         )
+    }
+
+    @Test
+    fun `the receiver listens for the screen coming back on, not just going off`() {
+        // Registering only ACTION_SCREEN_OFF would look fine until the first screen-off: the
+        // poll would stop and never resume, leaving the rest of the break unable to notice a
+        // blocked app being opened. Both actions have to be on the filter.
+        ShadowSettings.setCanDrawOverlays(true)
+        PauseState.setBreak(app, System.currentTimeMillis() + 10 * 60_000L, setOf("com.example.blocked"))
+
+        newService().onStartCommand(null, 0, 1)
+
+        assertTrue(
+            "the screen going off must be observed",
+            shadowOf(app).hasReceiverForIntent(Intent(Intent.ACTION_SCREEN_OFF))
+        )
+        assertTrue(
+            "the screen coming back on must be observed too, or polling never resumes",
+            shadowOf(app).hasReceiverForIntent(Intent(Intent.ACTION_SCREEN_ON))
+        )
+    }
+
+    @Test
+    fun `both screen broadcasts reach the receiver without throwing`() {
+        // The receiver flips a private flag BreakPolling gates on, so there is nothing public to
+        // assert on; what is worth pinning is that each action is actually delivered to it and
+        // handled, rather than the filter silently matching only one of them.
+        ShadowSettings.setCanDrawOverlays(true)
+        PauseState.setBreak(app, System.currentTimeMillis() + 10 * 60_000L, setOf("com.example.blocked"))
+        newService().onStartCommand(null, 0, 1)
+
+        val delivered = shadowOf(app).registeredReceivers
+            .filter { it.intentFilter.hasAction(Intent.ACTION_SCREEN_OFF) }
+        assertEquals("exactly one screen-state receiver should be registered", 1, delivered.size)
+
+        val receiver = delivered.single().broadcastReceiver
+        receiver.onReceive(app, Intent(Intent.ACTION_SCREEN_OFF))
+        receiver.onReceive(app, Intent(Intent.ACTION_SCREEN_ON))
     }
 }
